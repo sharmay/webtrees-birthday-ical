@@ -1,0 +1,76 @@
+<?php
+
+declare(strict_types=1);
+
+use BirthdayIcal\BirthdayIcalModule;
+use Fisharebest\Webtrees\Http\RequestHandlers\ControlPanel;
+use Fisharebest\Webtrees\I18N;
+
+/**
+ * @var string $title
+ * @var string $default_mode
+ * @var int    $default_depth
+ * @var int    $max_depth
+ * @var int    $default_alarm
+ * @var bool   $allow_all
+ * @var bool   $allow_caldav
+ */
+
+?>
+
+<?= view('components/breadcrumbs', ['links' => [route(ControlPanel::class) => I18N::translate('Control panel'), $title]]) ?>
+
+<h1><?= e($title) ?></h1>
+
+<form method="post">
+    <?= csrf_field() ?>
+
+    <div class="row mb-3">
+        <label class="col-sm-3 col-form-label"><?= I18N::translate('Default mode for new members') ?></label>
+        <div class="col-sm-9">
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="default_mode" id="dm-rel" value="<?= BirthdayIcalModule::MODE_RELATIVES ?>" <?= $default_mode === BirthdayIcalModule::MODE_RELATIVES ? 'checked' : '' ?>>
+                <label class="form-check-label" for="dm-rel"><?= I18N::translate('My relatives') ?></label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="default_mode" id="dm-all" value="<?= BirthdayIcalModule::MODE_ALL ?>" <?= $default_mode === BirthdayIcalModule::MODE_ALL ? 'checked' : '' ?>>
+                <label class="form-check-label" for="dm-all"><?= I18N::translate('All accessible living individuals') ?></label>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="default_depth" class="col-sm-3 col-form-label"><?= I18N::translate('Default relationship steps') ?></label>
+        <div class="col-sm-9"><input type="number" class="form-control w-auto" id="default_depth" name="default_depth" min="1" max="10" value="<?= $default_depth ?>"></div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="max_depth" class="col-sm-3 col-form-label"><?= I18N::translate('Maximum relationship steps a member may choose') ?></label>
+        <div class="col-sm-9">
+            <input type="number" class="form-control w-auto" id="max_depth" name="max_depth" min="1" max="10" value="<?= $max_depth ?>">
+            <div class="form-text"><?= I18N::translate('Each step multiplies the work; 5 is plenty for most trees.') ?></div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label for="default_alarm" class="col-sm-3 col-form-label"><?= I18N::translate('Default reminder (days before)') ?></label>
+        <div class="col-sm-9"><input type="number" class="form-control w-auto" id="default_alarm" name="default_alarm" min="0" max="30" value="<?= $default_alarm ?>"></div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-sm-3"></div>
+        <div class="col-sm-9">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="allow_all" id="allow_all" value="1" <?= $allow_all ? 'checked' : '' ?>>
+                <label class="form-check-label" for="allow_all"><?= I18N::translate('Allow members to choose “all living individuals”') ?></label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="allow_caldav" id="allow_caldav" value="1" <?= $allow_caldav ? 'checked' : '' ?>>
+                <label class="form-check-label" for="allow_caldav"><?= I18N::translate('Allow members to configure CalDAV push (stores their CalDAV password in the database)') ?></label>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary"><?= view('icons/save') ?> <?= I18N::translate('save') ?></button>
+    <a href="<?= route(ControlPanel::class) ?>" class="btn btn-secondary"><?= view('icons/cancel') ?> <?= I18N::translate('cancel') ?></a>
+</form>

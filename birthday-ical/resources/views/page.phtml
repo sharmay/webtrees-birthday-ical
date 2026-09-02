@@ -1,0 +1,160 @@
+<?php
+
+declare(strict_types=1);
+
+use BirthdayIcal\BirthdayIcalModule;
+use Fisharebest\Webtrees\I18N;
+use Fisharebest\Webtrees\Individual;
+use Fisharebest\Webtrees\Tree;
+
+/**
+ * @var string               $title
+ * @var Tree                 $tree
+ * @var BirthdayIcalModule   $module
+ * @var string               $feed_url
+ * @var string               $webcal_url
+ * @var string               $push_url
+ * @var string               $mode
+ * @var int                  $depth
+ * @var int                  $max_depth
+ * @var int                  $alarm
+ * @var bool                 $allow_all
+ * @var bool                 $allow_caldav
+ * @var string               $caldav_url
+ * @var string               $caldav_user
+ * @var bool                 $caldav_has_pw
+ * @var Individual|null      $own_individual
+ * @var int                  $count
+ */
+
+?>
+
+<h2 class="wt-page-title"><?= e($title) ?></h2>
+
+<div class="wt-page-content">
+
+    <?php if ($own_individual === null) : ?>
+        <div class="alert alert-warning">
+            <?= I18N::translate('Your account is not linked to an individual in this tree, so the “My relatives” option cannot work. Ask the administrator to set your individual record in your account settings, or use the “All living individuals” option.') ?>
+        </div>
+    <?php endif ?>
+
+    <div class="card mb-4">
+        <div class="card-header"><?= I18N::translate('Subscribe on your phone') ?></div>
+        <div class="card-body">
+            <p><?= I18N::translate('This feed currently contains %s birthdays.', I18N::number($count)) ?></p>
+
+            <label class="form-label" for="feed-url"><?= I18N::translate('Private calendar address (keep this secret)') ?></label>
+            <div class="input-group mb-2">
+                <input id="feed-url" class="form-control font-monospace" type="text" readonly value="<?= e($feed_url) ?>" onclick="this.select()">
+                <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('feed-url').value)"><?= I18N::translate('copy') ?></button>
+            </div>
+            <p class="small">
+                <a href="<?= e($webcal_url) ?>"><?= I18N::translate('Open in calendar app (webcal)') ?></a>
+                &nbsp;·&nbsp;
+                <?= I18N::translate('iPhone: Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar.') ?>
+                <?= I18N::translate('Google Calendar: Other calendars → From URL (web only; reminders are then set in Google Calendar).') ?>
+                <?= I18N::translate('Android: use a CalDAV/ICS sync app such as ICSx⁵ or DAVx⁵.') ?>
+            </p>
+
+            <form method="post" class="d-inline">
+                <input type="hidden" name="action" value="regenerate">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('<?= I18N::translate('This will invalidate the old address. Continue?') ?>')">
+                    <?= I18N::translate('Generate a new address') ?>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <form method="post">
+        <input type="hidden" name="action" value="save">
+        <?= csrf_field() ?>
+
+        <div class="card mb-4">
+            <div class="card-header"><?= I18N::translate('Who to include') ?></div>
+            <div class="card-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="mode" id="mode-relatives" value="<?= BirthdayIcalModule::MODE_RELATIVES ?>" <?= $mode === BirthdayIcalModule::MODE_RELATIVES ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="mode-relatives">
+                        <strong><?= I18N::translate('My relatives') ?></strong>
+                        <?php if ($own_individual !== null) : ?>
+                            — <?= I18N::translate('starting from %s', '<a href="' . e($own_individual->url()) . '">' . $own_individual->fullName() . '</a>') ?>
+                        <?php endif ?>
+                    </label>
+                    <div class="ms-4 mt-1">
+                        <label for="depth" class="form-label small"><?= I18N::translate('How far to go (steps through parent/child/spouse/sibling links)') ?></label>
+                        <input type="number" class="form-control form-control-sm w-auto" id="depth" name="depth" min="1" max="<?= $max_depth ?>" value="<?= $depth ?>">
+                        <div class="form-text"><?= I18N::translate('1 = parents, siblings, spouse, children. 2 adds grandparents, aunts/uncles, nieces/nephews, in-laws. 3 adds first cousins and great-grandparents.') ?></div>
+                    </div>
+                </div>
+
+                <?php if ($allow_all) : ?>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mode" id="mode-all" value="<?= BirthdayIcalModule::MODE_ALL ?>" <?= $mode === BirthdayIcalModule::MODE_ALL ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="mode-all">
+                            <strong><?= I18N::translate('All living individuals I can see in this tree') ?></strong>
+                            <div class="form-text"><?= I18N::translate('Respects the tree’s privacy settings. Can be large on big trees.') ?></div>
+                        </label>
+                    </div>
+                <?php endif ?>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header"><?= I18N::translate('Reminder') ?></div>
+            <div class="card-body">
+                <label for="alarm" class="form-label"><?= I18N::translate('Days before the birthday (0 = remind at 9:00 on the day itself)') ?></label>
+                <input type="number" class="form-control w-auto" id="alarm" name="alarm" min="0" max="30" value="<?= $alarm ?>">
+                <div class="form-text"><?= I18N::translate('Note: Google Calendar ignores alarms in subscribed feeds; set notifications there instead.') ?></div>
+            </div>
+        </div>
+
+        <?php if ($allow_caldav) : ?>
+            <div class="card mb-4">
+                <div class="card-header"><?= I18N::translate('Push to a CalDAV server (optional, e.g. Radicale / Nextcloud)') ?></div>
+                <div class="card-body">
+                    <p class="form-text">
+                        <?= I18N::translate('Instead of subscribing to the feed, webtrees can write the birthdays into an existing calendar on your CalDAV server. Give the full URL of the calendar collection, e.g. https://radicale.example.org/alice/birthdays/. The calendar must already exist.') ?>
+                    </p>
+                    <div class="row mb-2">
+                        <label for="caldav_url" class="col-sm-3 col-form-label"><?= I18N::translate('Calendar URL') ?></label>
+                        <div class="col-sm-9"><input type="url" class="form-control" id="caldav_url" name="caldav_url" value="<?= e($caldav_url) ?>" placeholder="https://…/user/calendar/"></div>
+                    </div>
+                    <div class="row mb-2">
+                        <label for="caldav_user" class="col-sm-3 col-form-label"><?= I18N::translate('Username') ?></label>
+                        <div class="col-sm-9"><input type="text" class="form-control" id="caldav_user" name="caldav_user" value="<?= e($caldav_user) ?>" autocomplete="off"></div>
+                    </div>
+                    <div class="row mb-2">
+                        <label for="caldav_pass" class="col-sm-3 col-form-label"><?= I18N::translate('Password') ?></label>
+                        <div class="col-sm-9">
+                            <input type="password" class="form-control" id="caldav_pass" name="caldav_pass" value="" autocomplete="new-password" placeholder="<?= $caldav_has_pw ? I18N::translate('(saved — leave blank to keep)') : '' ?>">
+                            <?php if ($caldav_has_pw) : ?>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="checkbox" name="caldav_clear_pass" id="caldav_clear_pass" value="1">
+                                    <label class="form-check-label small" for="caldav_clear_pass"><?= I18N::translate('Remove the saved password') ?></label>
+                                </div>
+                            <?php endif ?>
+                            <div class="form-text text-warning"><?= I18N::translate('The password is stored in the webtrees database. Use an app-specific password if your server supports them.') ?></div>
+                        </div>
+                    </div>
+                    <p class="small mb-0">
+                        <?= I18N::translate('To keep the calendar updated automatically, call this URL from a cron job (e.g. nightly):') ?><br>
+                        <code><?= e($push_url) ?></code>
+                    </p>
+                </div>
+            </div>
+        <?php endif ?>
+
+        <button type="submit" class="btn btn-primary"><?= view('icons/save') ?> <?= I18N::translate('save') ?></button>
+    </form>
+
+    <?php if ($allow_caldav && $caldav_url !== '') : ?>
+        <form method="post" class="mt-2">
+            <input type="hidden" name="action" value="push">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn-secondary"><?= I18N::translate('Push to CalDAV now') ?></button>
+        </form>
+    <?php endif ?>
+
+</div>
