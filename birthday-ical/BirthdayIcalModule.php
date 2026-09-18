@@ -122,7 +122,7 @@ class BirthdayIcalModule extends AbstractModule implements ModuleCustomInterface
 
     public function customModuleVersion(): string
     {
-        return '1.0.11';
+        return '1.0.13';
     }
 
     public function resourcesFolder(): string
@@ -558,17 +558,13 @@ class BirthdayIcalModule extends AbstractModule implements ModuleCustomInterface
 
         $host      = parse_url($base, PHP_URL_HOST) ?: 'webtrees';
         $alarm     = $this->userAlarm($user);
-        // Bookkeeping lives in module_setting (longtext), not user_setting (varchar 255),
-        // and is keyed per user AND per tree.
-        $uids_key  = 'caldav-uids-' . $user->id() . '-' . $tree->id();
-        $previous  = json_decode($this->getPreference($uids_key, '[]'), true) ?: [];
         $current   = [];
         $created   = 0;
         $errors    = [];
 
         foreach ($this->birthdayFacts($tree, $user) as $fact) {
             $uid = $this->eventUid($fact, $tree, $host);
-            $current[] = $uid;
+            $current[rawurlencode($uid) . '.ics'] = true;
 
             $vcal = new VCalendar();
             $vcal->PRODID = '-//webtrees//birthday-ical//EN';
@@ -582,18 +578,32 @@ class BirthdayIcalModule extends AbstractModule implements ModuleCustomInterface
             }
         }
 
-        // Remove events that were pushed earlier but are no longer in scope
+        // Reconcile: ask the server what is in the collection, and delete any
+        // birthday event of this tree that should no longer be there. This is
+        // self-healing - orphans from old hostnames or failed runs get cleaned
+        // up on every push, with no stored bookkeeping to go stale.
         $removed = 0;
-        foreach (array_diff($previous, $current) as $stale) {
-            [$status, $detail] = $this->httpRequest('DELETE', $base . rawurlencode($stale) . '.ics', $auth);
-            if ($status === 404 || ($status >= 200 && $status < 300)) {
-                $removed++;
-            } else {
-                $errors[] = $stale . ' (delete) → HTTP ' . $status . ($detail !== '' ? ' (' . $detail . ')' : '');
+        $origin  = preg_replace('#^(https?://[^/]+).*$#', '$1', $base);
+        $prefix  = 'wt-birthday-' . $tree->id() . '-';
+
+        [$status, $xml] = $this->httpRequest('PROPFIND', $base, $auth, '', ['Depth: 1'], false);
+        if ($status !== 207) {
+            $errors[] = 'PROPFIND → HTTP ' . $status . ' (stale events were not cleaned up)';
+        } elseif (preg_match_all('#<href>([^<]+\.ics)</href>#i', $xml, $m)) {
+            foreach ($m[1] as $href) {
+                $filename = rawurlencode(rawurldecode(basename($href)));
+                $decoded  = rawurldecode(basename($href));
+                if (!str_starts_with($decoded, $prefix) || isset($current[$filename])) {
+                    continue;
+                }
+                [$status, $detail] = $this->httpRequest('DELETE', $origin . '/' . ltrim($href, '/'), $auth);
+                if ($status === 404 || ($status >= 200 && $status < 300)) {
+                    $removed++;
+                } else {
+                    $errors[] = $decoded . ' (delete) → HTTP ' . $status . ($detail !== '' ? ' (' . $detail . ')' : '');
+                }
             }
         }
-
-        $this->setPreference($uids_key, json_encode(array_values($current)));
 
         $message = I18N::translate('CalDAV push: %d events written, %d removed.', $created, $removed);
         if ($errors !== []) {
@@ -603,28 +613,41 @@ class BirthdayIcalModule extends AbstractModule implements ModuleCustomInterface
         return ['ok' => $errors === [], 'message' => $message];
     }
 
+    /** @var \CurlHandle|null one handle for the whole push, so TCP+TLS is negotiated once */
+    private $curl_handle = null;
+
     /**
      * @return array{0:int,1:string} HTTP status and a short diagnostic (server response body or curl error)
      */
-    private function httpRequest(string $method, string $url, string $auth, string $body = ''): array
+    private function httpRequest(string $method, string $url, string $auth, string $body = '', array $headers = [], bool $truncate = true): array
     {
-        $ch = curl_init($url);
+        if ($this->curl_handle === null) {
+            $this->curl_handle = curl_init();
+        }
+        $ch = $this->curl_handle;
+
+        $content_type = $method === 'PROPFIND' ? 'application/xml; charset=utf-8' : 'text/calendar; charset=utf-8';
+
         curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_USERPWD        => $auth,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_HTTPHEADER     => ['Content-Type: text/calendar; charset=utf-8'],
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_TCP_KEEPALIVE  => 1,
+            CURLOPT_POSTFIELDS     => $body,
+            CURLOPT_HTTPHEADER     => array_merge(['Content-Type: ' . $content_type, 'Connection: keep-alive'], $headers),
         ]);
-        if ($body !== '') {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-        }
+
         $response = curl_exec($ch);
         $status   = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $detail   = $response === false ? curl_error($ch) : trim(strip_tags((string) $response));
-        curl_close($ch);
+        $detail   = $response === false ? curl_error($ch) : (string) $response;
+        if ($truncate) {
+            $detail = mb_substr(trim(strip_tags($detail)), 0, 200);
+        }
 
-        return [$status, mb_substr($detail, 0, 200)];
+        return [$status, $detail];
     }
 
     // -------------------------------------------------------------------------

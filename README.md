@@ -1,4 +1,5 @@
-# Birthday reminders from webtrees on your phone
+# Birthday reminders from webtrees
+### On your phone or calendar (Thunderbird)
 
 A custom module for **webtrees 2.2.x**. Every member gets a private, subscribable
 iCalendar (.ics) feed of upcoming birthdays with alarms, in one of two modes:
@@ -65,3 +66,5 @@ CalDAV URL can be the internal one (`http://radicale:5232/alice/birthdays/`).
   (per-user setting). Prefer an app-specific password or a dedicated Radicale user.
 * The relatives walk goes through all family links equally (no distinction between
   blood relatives and in-laws). Depth 3 on a normal tree is ~50–150 people.
+
+*Developed with help of Claude
